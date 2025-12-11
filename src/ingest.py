@@ -48,8 +48,6 @@ def index_chunks_to_qdrant(chunks, collection_name="Test_Rag"):
             vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
         )
         print(f"已建立新集合：{collection_name} (維度: {vector_size})")
-
-    print(f"準備處理 {len(chunks)} 個區塊...")
     
     points = []
 
@@ -67,7 +65,6 @@ def index_chunks_to_qdrant(chunks, collection_name="Test_Rag"):
             collection_name=collection_name,
             points=points
         )
-        print("所有資料已成功寫入 Qdrant 資料庫！")
 
 
 def search_qdrant(query, collection_name="Test_Rag"):
@@ -78,25 +75,21 @@ def search_qdrant(query, collection_name="Test_Rag"):
     query_vector = model.encode(query).tolist()
     client = QdrantClient(host="localhost", port=6333)
 
-    search_result = client.search(
+    search_result = client.query_points(
     collection_name=collection_name,
-    query_vector=query_vector,
+    query=query_vector,
     limit=3
-    )
-    
-    # for i, result in enumerate(search_result):
-        # score 代表相似度 (越接近 1 代表越相關)
-        # print(f"\n【結果 {i+1}】相似度：{result.score:.4f}")
-        # print(f"內容摘要：{result.payload['page_content'][:100]}...") # 只印出前100字預覽
+    ).points
+  
+    return search_result
 
 
-def generate_answer_remote(query, search_result, remote_ip="http://localhost:11434"):    
-    target_model = 'llama3:8b' 
+def generate_answer_remote(query, search_result, remote_ip="http://10.0.0.209:11434"):    
+    target_model = 'gpt-oss:20b' 
     client = Client(host=remote_ip)
 
     context_str = ""
     for result in search_result:
-        # 將找到的每一段文字串接起來
         context_str += result.payload['page_content'] + "\n---\n"
 
     final_prompt = f"""
@@ -109,20 +102,20 @@ def generate_answer_remote(query, search_result, remote_ip="http://localhost:114
     【使用者問題】：
     {query}
     """
+    
+    # 發送請求
     response = client.chat(
         model=target_model,
         messages=[
             {'role': 'user', 'content': final_prompt},
-            {'temperature': 0.3}
         ],
+        options={'temperature': 0.4}
     )
-    
-    print("\n" + "="*20 + " AI 回答結果 " + "="*20)
-    print(response['message']['content'])
-    print("="*50)
-        
+
+    return response['message']['content']        
 
 
+# 主程式為以下
 if __name__ == "__main__":
     pdf_filename = "/Users/jr/Downloads/離校注意事項.pdf"    
     
@@ -133,16 +126,16 @@ if __name__ == "__main__":
     print(f"2. 文字切分完成，共產生 {len(chunks)} 個區塊。")
     
     index_chunks_to_qdrant(chunks, collection_name="Test_Rag")
-    
-    print("--- 流程執行完畢，資料庫建置成功 ---")
+    print(f"3. 準備處理{len(chunks)}個區塊....")
 
     user_question = "哪些日子無法辦理離校？" 
     search_qdrant(user_question)
+    print(f"問題為：{user_question}?")
 
     retrieved_docs = search_qdrant(user_question)
 
     if retrieved_docs:
-        remote_ollama_ip = "http://localhost:11434" 
+        remote_ollama_ip = "http://10.0.0.209:11434" 
         
         answer = generate_answer_remote(user_question, retrieved_docs, remote_ollama_ip)
         
