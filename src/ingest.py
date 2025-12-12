@@ -1,14 +1,17 @@
+import os
 import re
-from pypdf import PdfReader
+from typing import List
 
-import ollama
 from ollama import Client
+from pypdf import PdfReader
 from qdrant_client import QdrantClient
-from qdrant_client.models import PointStruct, VectorParams, Distance
-from sentence_transformers import SentenceTransformer 
+from sentence_transformers import SentenceTransformer
+from qdrant_client.models import PointStruct, VectorParams, Distance, ScoredPoint
 
-def extract_text_from_pdf(pdf_path):
+# 讀取PDF檔案
+def extract_text_from_pdf(pdf_path: os.PathLike):
     reader = PdfReader(pdf_path)
+
     full_text = ""
     for page in reader.pages:
         text = page.extract_text() # 把當前頁面轉成純文字
@@ -20,24 +23,20 @@ def extract_text_from_pdf(pdf_path):
 
     return full_text
 
-
-def split_text_into_chunk(text, chunk_size=500):
+# 切分函式
+def split_text_into_chunk(text: str, chunk_size: int = 500):
     chunks = []
     total_length = len(text)
 
     for i in range(0,total_length,chunk_size):
         chunk_content = text[i : i + chunk_size]
-
         chunks.append(chunk_content)
 
     return chunks
 
-def index_chunks_to_qdrant(chunks, collection_name="Test_Rag"):
-    """
-    使用 BAAI/bge-m3 模型將文字轉向量並存入 Qdrant
-    """
-    # device='mps'
-    embedding_model = SentenceTransformer('BAAI/bge-m3') 
+# 將切分的文字轉向量存進向量資料庫
+def index_chunks_to_qdrant(chunks: list[str], collection_name="Test_Rag"):
+    embedding_model = SentenceTransformer(model_name_or_path='BAAI/bge-m3', device='mps') 
     client = QdrantClient(host="localhost", port=6333)
     vector_size = 1024 
     
@@ -53,8 +52,9 @@ def index_chunks_to_qdrant(chunks, collection_name="Test_Rag"):
 
     for i, chunk_text in enumerate(chunks):
         embedding_vector = embedding_model.encode(chunk_text).tolist()
+        from uuid import uuid4
         point = PointStruct(
-            id=i,
+            id=uuid4(),
             vector=embedding_vector,
             payload={"page_content": chunk_text}
         )
@@ -65,7 +65,6 @@ def index_chunks_to_qdrant(chunks, collection_name="Test_Rag"):
             collection_name=collection_name,
             points=points
         )
-
 
 def search_qdrant(query, collection_name="Test_Rag"):
     """
@@ -84,7 +83,7 @@ def search_qdrant(query, collection_name="Test_Rag"):
     return search_result
 
 
-def generate_answer_remote(query, search_result, remote_ip="http://10.0.0.209:11434"):    
+def generate_answer_remote(query:str, search_result: List[ScoredPoint], remote_ip="http://10.0.0.209:11434"):    
     target_model = 'gpt-oss:20b' 
     client = Client(host=remote_ip)
 
