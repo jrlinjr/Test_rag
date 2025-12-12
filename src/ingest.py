@@ -82,7 +82,6 @@ def search_qdrant(query, collection_name="Test_Rag"):
   
     return search_result
 
-
 def generate_answer_remote(query:str, search_result: List[ScoredPoint], remote_ip="http://10.0.0.209:11434"):    
     target_model = 'gpt-oss:20b' 
     client = Client(host=remote_ip)
@@ -112,7 +111,6 @@ def generate_answer_remote(query:str, search_result: List[ScoredPoint], remote_i
     )
 
     return response['message']['content']        
-
 
 # 主程式為以下
 if __name__ == "__main__":
